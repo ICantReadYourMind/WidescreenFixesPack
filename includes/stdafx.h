@@ -1188,6 +1188,7 @@ public:
     __declspec(noinline) static Event<>& onMenuExitEvent();
     __declspec(noinline) static Event<bool>& onActivateApp();
     __declspec(noinline) static Event<>& onBeforeReset();
+    __declspec(noinline) static Event<>& onBeforeLost();
     __declspec(noinline) static Event<>& onEndScene();
     __declspec(noinline) static Event<>& onReadGameConfig();
 };

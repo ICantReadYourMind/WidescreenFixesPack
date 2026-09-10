@@ -33,17 +33,20 @@ void Init()
         WFP::onGameProcessEvent().executeAll();
     });
 
-    pattern = find_pattern("8B 0D ? ? ? ? 53 56 57 55 31 ED");
+    pattern = find_pattern("E8 ? ? ? ? A1 ? ? ? ? 68 ? ? ? ? 50 ? ? FF 51 ? 8B F0", "E8 ? ? ? ? 83 C4 ? A1 ? ? ? ? C7 44 24 ? ? ? ? ? ? ? ? ? ? FF 52 ? E8 ? ? ? ? A1");
     static auto BeforeResetHook = safetyhook::create_mid(pattern.get_first(), [](SafetyHookContext& regs)
     {
         WFP::onBeforeReset().executeAll();
     });
 
-    pattern = find_pattern("A1 ? ? ? ? 53 85 C0 56");
-    static auto BeforeLostHook = safetyhook::create_mid(pattern.get_first(), [](SafetyHookContext& regs)
+    pattern = find_pattern("A1 ? ? ? ? 68 ? ? ? ? 50 ? ? FF 52 ? A1");
+    if (!pattern.empty())
     {
-        WFP::onBeforeLost().executeAll();
-    });
+        static auto BeforeResetHook2 = safetyhook::create_mid(pattern.get_first(), [](SafetyHookContext& regs)
+        {
+            WFP::onBeforeReset().executeAll();
+        });
+    }
 
     pattern = find_pattern("8B 08 53 56 57 50 FF 91", "A1 ? ? ? ? ? ? 50 FF 92 ? ? ? ? A1");
     static auto BeforeEndSceneHook = safetyhook::create_mid(pattern.get_first(), [](SafetyHookContext& regs)

@@ -50,11 +50,6 @@ __declspec(noinline) WFP::Event<>& WFP::onBeforeReset()
     static Event<> BeforeReset;
     return BeforeReset;
 }
-__declspec(noinline) WFP::Event<>& WFP::onBeforeLost()
-{
-    static Event<> BeforeLost;
-    return BeforeLost;
-}
 __declspec(noinline) WFP::Event<>& WFP::onEndScene()
 {
     static Event<> EndScene;

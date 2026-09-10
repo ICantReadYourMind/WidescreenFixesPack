@@ -10,7 +10,6 @@ module;
 export module PostFX;
 
 import Skeleton;
-import MSAA;
 
 using Microsoft::WRL::ComPtr;
 
@@ -57,9 +56,17 @@ public:
 private:
     static inline bool bConsoleGamma = false;
     static inline bool bSMAA = false;
+    static inline bool bDisableSMAAWhenMSAA = true;
 
-    static inline D3DFORMAT backBufferFormat = D3DFMT_UNKNOWN;
-    static inline bool bBackBufferFormatDirty = true;
+    struct BackBufferInfo
+    {
+        D3DFORMAT format = D3DFMT_UNKNOWN;
+        D3DMULTISAMPLE_TYPE multiSampleType = D3DMULTISAMPLE_NONE;
+        DWORD multiSampleQuality = 0;
+    };
+
+    static inline BackBufferInfo backBufferInfo{};
+    static inline bool bBackBufferInfoDirty = true;
 
     static inline ComPtr<IDirect3DTexture9> pSceneTex;
     static inline ComPtr<IDirect3DSurface9> pSceneSurf;
@@ -104,17 +111,23 @@ private:
         return dev9;
     }
 
-    static D3DFORMAT GetBackBufferFormat(IDirect3DDevice9* dev)
+    static BackBufferInfo GetBackBufferInfo(IDirect3DDevice9* dev)
     {
+        BackBufferInfo info{};
         if (!dev)
-            return D3DFMT_UNKNOWN;
+            return info;
 
         ComPtr<IDirect3DSurface9> rt0;
         if (SUCCEEDED(dev->GetRenderTarget(0, &rt0)) && rt0)
         {
             D3DSURFACE_DESC desc{};
             if (SUCCEEDED(rt0->GetDesc(&desc)))
-                return desc.Format;
+            {
+                info.format = desc.Format;
+                info.multiSampleType = desc.MultiSampleType;
+                info.multiSampleQuality = desc.MultiSampleQuality;
+                return info;
+            }
         }
 
         ComPtr<IDirect3DSwapChain9> swap;
@@ -122,10 +135,14 @@ private:
         {
             D3DPRESENT_PARAMETERS pp{};
             if (SUCCEEDED(swap->GetPresentParameters(&pp)))
-                return pp.BackBufferFormat;
+            {
+                info.format = pp.BackBufferFormat;
+                info.multiSampleType = pp.MultiSampleType;
+                info.multiSampleQuality = pp.MultiSampleQuality;
+            }
         }
 
-        return D3DFMT_UNKNOWN;
+        return info;
     }
 
     static void InitShaderAndStaticResources(IDirect3DDevice9* dev)
@@ -206,16 +223,16 @@ private:
         nScreenWidth = RsGlobal->width;
         nScreenHeight = RsGlobal->height;
 
-        if (bBackBufferFormatDirty || backBufferFormat == D3DFMT_UNKNOWN)
+        if (bBackBufferInfoDirty || backBufferInfo.format == D3DFMT_UNKNOWN)
         {
-            backBufferFormat = GetBackBufferFormat(dev);
-            bBackBufferFormatDirty = false;
+            backBufferInfo = GetBackBufferInfo(dev);
+            bBackBufferInfoDirty = false;
         }
-        if (backBufferFormat == D3DFMT_UNKNOWN)
+        if (backBufferInfo.format == D3DFMT_UNKNOWN)
             return false;
 
         if (FAILED(dev->CreateTexture(nScreenWidth, nScreenHeight, 1,
-            D3DUSAGE_RENDERTARGET, backBufferFormat, D3DPOOL_DEFAULT, &pSceneTex, nullptr)))
+            D3DUSAGE_RENDERTARGET, backBufferInfo.format, D3DPOOL_DEFAULT, &pSceneTex, nullptr)))
             return false;
 
         if (FAILED(pSceneTex->GetSurfaceLevel(0, &pSceneSurf)))
@@ -223,9 +240,9 @@ private:
             ReleaseTextures(); return false;
         }
 
-        if (SelectedMultisamplingLevels > 1)
+        if (backBufferInfo.multiSampleType != D3DMULTISAMPLE_NONE)
         {
-            if (FAILED(dev->CreateRenderTarget(nScreenWidth, nScreenHeight, backBufferFormat,
+            if (FAILED(dev->CreateRenderTarget(nScreenWidth, nScreenHeight, backBufferInfo.format,
                 D3DMULTISAMPLE_NONE, 0, FALSE, &pResolveSurf, nullptr)))
             {
                 ReleaseTextures(); return false;
@@ -268,7 +285,7 @@ private:
     {
         IDirect3DSurface9* pSrcSurf = currentRT;
 
-        if (SelectedMultisamplingLevels > 1)
+        if (backBufferInfo.multiSampleType != D3DMULTISAMPLE_NONE)
         {
             if (FAILED(dev->StretchRect(currentRT, nullptr, pResolveSurf.Get(), nullptr, D3DTEXF_LINEAR)))
             {
@@ -328,7 +345,9 @@ public:
         ComPtr<IDirect3DSurface9> currentRT;
         if (FAILED(dev->GetRenderTarget(0, &currentRT)) || !currentRT) return;
 
-        if (!CreateTextures(dev.Get()) || !UpdateSceneTex(dev.Get(), currentRT.Get())) return;
+        if (!CreateTextures(dev.Get())) return;
+        if (bDisableSMAAWhenMSAA && backBufferInfo.multiSampleType != D3DMULTISAMPLE_NONE) return;
+        if (!UpdateSceneTex(dev.Get(), currentRT.Get())) return;
 
         ComPtr<IDirect3DVertexBuffer9> oldVB;
         ComPtr<IDirect3DVertexDeclaration9> oldDecl;
@@ -428,7 +447,7 @@ public:
 
     static void OnDeviceReset()
     {
-        bBackBufferFormatDirty = true;
+        bBackBufferInfoDirty = true;
 
         if (!pEffect)
             return;
